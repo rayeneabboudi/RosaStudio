@@ -1,17 +1,24 @@
 console.log("SHOP.JS LOADED");
 
-const API_URL = "/products";
+// 🔗 POINT TO YOUR LIVE BACKEND ON RENDER
+const API_URL = "https://rosastudio-sfgv.onrender.com/";
+
 let allProducts = [];
 
 async function loadProducts() {
   try {
     const res = await fetch(API_URL);
-    if (!res.ok) throw new Error("Failed to fetch products");
+    if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
 
-    allProducts = await res.json();
-    renderProducts(allProducts);
+    all_products = await res.json();
+    renderProducts(all_products);
   } catch (err) {
     console.error("Failed to load products:", err);
+    // Optional: show user-friendly error on page
+    const container = document.getElementById("product-grid");
+    if (container) {
+      container.innerHTML = "<p>⚠️ Unable to load products. Please try again later.</p>";
+    }
   }
 }
 
@@ -31,12 +38,15 @@ function renderProducts(products) {
     const card = document.createElement("div");
     card.className = "product-card";
 
+    // Fallback image if missing
+    const imgSrc = product.image || "pic/placeholder.jpg";
+
     card.innerHTML = `
       <div class="image-wrapper">
-        <img src="${product.image}" alt="${product.name}">
+        <img src="${imgSrc}" alt="${product.name || 'Product'}" onerror="this.src='pic/placeholder.jpg'">
       </div>
-      <h3>${product.name}</h3>
-      <p class="price">$${product.price}</p>
+      <h3>${product.name || 'Unnamed Product'}</h3>
+      <p class="price">$${(product.price || 0).toFixed(2)}</p>
       <button onclick="deleteProduct(${product.id})">Delete</button>
     `;
 
@@ -47,18 +57,24 @@ function renderProducts(products) {
 async function deleteProduct(id) {
   if (!confirm("Are you sure you want to delete this product?")) return;
 
-  await fetch(`${API_URL}/${id}`, { method: "DELETE" });
-  loadProducts();
+  try {
+    const res = await fetch(`${API_URL}/${id}`, { method: "DELETE" });
+    if (!res.ok) throw new Error("Delete failed");
+    loadProducts(); // Refresh list
+  } catch (err) {
+    console.error("Delete error:", err);
+    alert("Failed to delete product. Check console.");
+  }
 }
 
 async function addProduct() {
-  const name = document.getElementById("name").value.trim();
-  const price = Number(document.getElementById("price").value);
-  const image = document.getElementById("image").value.trim();
-  const description = document.getElementById("description").value.trim();
+  const name = document.getElementById("name")?.value.trim();
+  const price = Number(document.getElementById("price")?.value);
+  const image = document.getElementById("image")?.value.trim();
+  const description = document.getElementById("description")?.value.trim();
 
-  if (!name || !price || !image || !description) {
-    alert("Please fill in all fields");
+  if (!name || isNaN(price) || price <= 0 || !image || !description) {
+    alert("Please fill in all fields correctly");
     return;
   }
 
@@ -69,8 +85,12 @@ async function addProduct() {
       body: JSON.stringify({ name, price, image, description })
     });
 
-    if (!res.ok) throw new Error("Failed to add product");
+    if (!res.ok) {
+      const errorText = await res.text();
+      throw new Error(`Add failed: ${errorText}`);
+    }
 
+    // Clear form
     document.getElementById("name").value = "";
     document.getElementById("price").value = "";
     document.getElementById("image").value = "";
@@ -78,22 +98,20 @@ async function addProduct() {
 
     loadProducts();
   } catch (err) {
-    console.error(err);
-    alert("Error adding product. Check console.");
+    console.error("Add product error:", err);
+    alert("Error adding product. Check console for details.");
   }
 }
 
 function toggleAdmin() {
   const panel = document.getElementById("admin-panel");
-  if (!panel) return;
-
-  panel.style.display =
-    panel.style.display === "none" ? "block" : "none";
+  if (panel) {
+    panel.style.display = panel.style.display === "none" ? "block" : "none";
+  }
 }
 
 document.addEventListener("DOMContentLoaded", () => {
   const sortFilter = document.getElementById("sort-filter");
-
   if (sortFilter) {
     sortFilter.addEventListener("change", function () {
       let sorted = [...allProducts];
