@@ -1,32 +1,42 @@
 console.log("SHOP.JS LOADED");
 
-const API_URL = "https://rosastudio-sfgv.onrender.com";
+// ✅ CORRECT URL: Points to the specific API folder on your server
+const API_URL = "https://rosastudio-sfgv.onrender.com/api/products";
+
 let allProducts = [];
 
+// 1. Fetch products
 async function loadProducts() {
   try {
     const res = await fetch(API_URL);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) throw new Error(`Server Error: ${res.status}`);
     
-    // FIX: Match the global variable name correctly
     allProducts = await res.json();
     renderProducts(allProducts);
   } catch (err) {
     console.error("Load error:", err);
+    // Only show error if grid is empty
+    const container = document.getElementById("product-grid");
+    if (container && container.innerHTML.trim() === "") {
+        container.innerHTML = "<p>Loading products...</p>";
+    }
   }
 }
 
+// 2. Render products
 function renderProducts(products) {
   const container = document.getElementById("product-grid");
   if (!container) return;
 
   container.innerHTML = "";
+  
   const countEl = document.getElementById("product-count");
-  if (countEl) countEl.innerText = `${products.length} Products`;
+  if (countEl) countEl.innerText = `${products.length} Items`;
 
   products.forEach(product => {
     const card = document.createElement("div");
     card.className = "product-card";
+    
     const imgSrc = product.image || "pic/placeholder.jpg";
 
     card.innerHTML = `
@@ -34,22 +44,37 @@ function renderProducts(products) {
         <img src="${imgSrc}" alt="${product.name}" onerror="this.src='pic/placeholder.jpg'">
       </div>
       <h3>${product.name}</h3>
-      <p class="price">$${(Number(product.price) || 0).toFixed(2)}</p>
+      <p class="price">$${Number(product.price).toFixed(2)}</p>
       <button class="delete-btn" onclick="deleteProduct(${product.id})">Delete</button>
     `;
     container.appendChild(card);
   });
 }
 
+// 3. Add Product
 async function addProduct() {
-  // FIX: We use a flexible selector to find your inputs regardless of the ID prefix
-  const nameVal = document.querySelector('input[placeholder*="Name"], #name, #new-name')?.value;
-  const priceVal = document.querySelector('input[placeholder*="Price"], #price, #new-price')?.value;
-  const imageVal = document.querySelector('input[placeholder*="URL"], #image, #new-image')?.value;
-  const descVal = document.querySelector('textarea, #description, #new-desc')?.value;
+  // ✅ REVERTED TO ORIGINAL IDs: "name", "price", "image", "description"
+  const nameInput = document.getElementById("name");
+  const priceInput = document.getElementById("price");
+  const imageInput = document.getElementById("image");
+  const descInput = document.getElementById("description");
 
-  if (!nameVal || !priceVal || !imageVal) {
-    alert("Please fill in the required fields");
+  // Debugging: Check if found
+  if (!nameInput || !priceInput || !imageInput) {
+    alert("Error: Script cannot find input fields. Check HTML IDs.");
+    console.error("Looking for IDs: 'name', 'price', 'image'. Found:", nameInput, priceInput, imageInput);
+    return;
+  }
+
+  const payload = {
+    name: nameInput.value.trim(),
+    price: parseFloat(priceInput.value),
+    image: imageInput.value.trim(),
+    description: descInput ? descInput.value.trim() : ""
+  };
+
+  if (!payload.name || !payload.price) {
+    alert("Please enter a Name and Price.");
     return;
   }
 
@@ -57,39 +82,42 @@ async function addProduct() {
     const res = await fetch(API_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ 
-        name: nameVal, 
-        price: parseFloat(priceVal), 
-        image: imageVal, 
-        description: descVal || "" 
-      })
+      body: JSON.stringify(payload)
     });
 
-    if (!res.ok) throw new Error(await res.text());
+    if (!res.ok) {
+      const txt = await res.text();
+      throw new Error(txt);
+    }
 
-    // Reset all inputs in the admin panel
-    document.querySelectorAll('#admin-panel input, #admin-panel textarea').forEach(i => i.value = "");
+    // Success: Clear inputs
+    nameInput.value = "";
+    priceInput.value = "";
+    imageInput.value = "";
+    if (descInput) descInput.value = "";
 
-    // Refresh the shop immediately
+    // Refresh Shop
     await loadProducts();
-    toggleAdmin(); 
-    
+    toggleAdmin();
+
   } catch (err) {
-    console.error("Add product error:", err);
-    alert("Could not add product. Check if your Render server is awake.");
+    console.error("Add failed:", err);
+    alert("Failed to add product. Check console.");
   }
 }
 
+// 4. Delete Product
 async function deleteProduct(id) {
   if (!confirm("Delete this item?")) return;
   try {
-    const res = await fetch(`${API_URL}${id}`, { method: "DELETE" });
+    const res = await fetch(`${API_URL}/${id}`, { method: "DELETE" });
     if (res.ok) loadProducts();
   } catch (err) {
     console.error("Delete error:", err);
   }
 }
 
+// 5. Toggle Admin Panel
 function toggleAdmin() {
   const panel = document.getElementById("admin-panel");
   if (panel) {
@@ -97,16 +125,14 @@ function toggleAdmin() {
   }
 }
 
+// 6. Init
 document.addEventListener("DOMContentLoaded", () => {
   const sortFilter = document.getElementById("sort-filter");
   if (sortFilter) {
     sortFilter.addEventListener("change", function () {
       let sorted = [...allProducts];
-      if (this.value.includes("Low to High")) {
-        sorted.sort((a, b) => a.price - b.price);
-      } else if (this.value.includes("High to Low")) {
-        sorted.sort((a, b) => b.price - a.price);
-      }
+      if (this.value.includes("Low to High")) sorted.sort((a, b) => a.price - b.price);
+      else if (this.value.includes("High to Low")) sorted.sort((a, b) => b.price - a.price);
       renderProducts(sorted);
     });
   }
