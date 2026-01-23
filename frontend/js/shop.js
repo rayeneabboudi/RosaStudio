@@ -1,80 +1,55 @@
 console.log("SHOP.JS LOADED");
 
-// 🔗 POINT TO YOUR LIVE BACKEND ON RENDER
 const API_URL = "https://rosastudio-sfgv.onrender.com/";
-
 let allProducts = [];
 
 async function loadProducts() {
   try {
     const res = await fetch(API_URL);
-    if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
-
-    all_products = await res.json();
-    renderProducts(all_products);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    
+    // FIX: Match the global variable name correctly
+    allProducts = await res.json();
+    renderProducts(allProducts);
   } catch (err) {
-    console.error("Failed to load products:", err);
-    // Optional: show user-friendly error on page
-    const container = document.getElementById("product-grid");
-    if (container) {
-      container.innerHTML = "<p>⚠️ Unable to load products. Please try again later.</p>";
-    }
+    console.error("Load error:", err);
   }
 }
 
 function renderProducts(products) {
   const container = document.getElementById("product-grid");
-  if (!container) {
-    console.error("product-grid element not found");
-    return;
-  }
+  if (!container) return;
 
   container.innerHTML = "";
-
   const countEl = document.getElementById("product-count");
-  if (countEl) countEl.innerText = products.length;
+  if (countEl) countEl.innerText = `${products.length} Products`;
 
   products.forEach(product => {
     const card = document.createElement("div");
     card.className = "product-card";
-
-    // Fallback image if missing
     const imgSrc = product.image || "pic/placeholder.jpg";
 
     card.innerHTML = `
       <div class="image-wrapper">
-        <img src="${imgSrc}" alt="${product.name || 'Product'}" onerror="this.src='pic/placeholder.jpg'">
+        <img src="${imgSrc}" alt="${product.name}" onerror="this.src='pic/placeholder.jpg'">
       </div>
-      <h3>${product.name || 'Unnamed Product'}</h3>
-      <p class="price">$${(product.price || 0).toFixed(2)}</p>
-      <button onclick="deleteProduct(${product.id})">Delete</button>
+      <h3>${product.name}</h3>
+      <p class="price">$${(Number(product.price) || 0).toFixed(2)}</p>
+      <button class="delete-btn" onclick="deleteProduct(${product.id})">Delete</button>
     `;
-
     container.appendChild(card);
   });
 }
 
-async function deleteProduct(id) {
-  if (!confirm("Are you sure you want to delete this product?")) return;
-
-  try {
-    const res = await fetch(`${API_URL}/${id}`, { method: "DELETE" });
-    if (!res.ok) throw new Error("Delete failed");
-    loadProducts(); // Refresh list
-  } catch (err) {
-    console.error("Delete error:", err);
-    alert("Failed to delete product. Check console.");
-  }
-}
-
 async function addProduct() {
-  const name = document.getElementById("name")?.value.trim();
-  const price = Number(document.getElementById("price")?.value);
-  const image = document.getElementById("image")?.value.trim();
-  const description = document.getElementById("description")?.value.trim();
+  // FIX: We use a flexible selector to find your inputs regardless of the ID prefix
+  const nameVal = document.querySelector('input[placeholder*="Name"], #name, #new-name')?.value;
+  const priceVal = document.querySelector('input[placeholder*="Price"], #price, #new-price')?.value;
+  const imageVal = document.querySelector('input[placeholder*="URL"], #image, #new-image')?.value;
+  const descVal = document.querySelector('textarea, #description, #new-desc')?.value;
 
-  if (!name || isNaN(price) || price <= 0 || !image || !description) {
-    alert("Please fill in all fields correctly");
+  if (!nameVal || !priceVal || !imageVal) {
+    alert("Please fill in the required fields");
     return;
   }
 
@@ -82,31 +57,43 @@ async function addProduct() {
     const res = await fetch(API_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, price, image, description })
+      body: JSON.stringify({ 
+        name: nameVal, 
+        price: parseFloat(priceVal), 
+        image: imageVal, 
+        description: descVal || "" 
+      })
     });
 
-    if (!res.ok) {
-      const errorText = await res.text();
-      throw new Error(`Add failed: ${errorText}`);
-    }
+    if (!res.ok) throw new Error(await res.text());
 
-    // Clear form
-    document.getElementById("name").value = "";
-    document.getElementById("price").value = "";
-    document.getElementById("image").value = "";
-    document.getElementById("description").value = "";
+    // Reset all inputs in the admin panel
+    document.querySelectorAll('#admin-panel input, #admin-panel textarea').forEach(i => i.value = "");
 
-    loadProducts();
+    // Refresh the shop immediately
+    await loadProducts();
+    toggleAdmin(); 
+    
   } catch (err) {
     console.error("Add product error:", err);
-    alert("Error adding product. Check console for details.");
+    alert("Could not add product. Check if your Render server is awake.");
+  }
+}
+
+async function deleteProduct(id) {
+  if (!confirm("Delete this item?")) return;
+  try {
+    const res = await fetch(`${API_URL}${id}`, { method: "DELETE" });
+    if (res.ok) loadProducts();
+  } catch (err) {
+    console.error("Delete error:", err);
   }
 }
 
 function toggleAdmin() {
   const panel = document.getElementById("admin-panel");
   if (panel) {
-    panel.style.display = panel.style.display === "none" ? "block" : "none";
+    panel.style.display = (panel.style.display === "none" || panel.style.display === "") ? "block" : "none";
   }
 }
 
@@ -115,16 +102,13 @@ document.addEventListener("DOMContentLoaded", () => {
   if (sortFilter) {
     sortFilter.addEventListener("change", function () {
       let sorted = [...allProducts];
-
-      if (this.value === "Price: Low to High") {
+      if (this.value.includes("Low to High")) {
         sorted.sort((a, b) => a.price - b.price);
-      } else if (this.value === "Price: High to Low") {
+      } else if (this.value.includes("High to Low")) {
         sorted.sort((a, b) => b.price - a.price);
       }
-
       renderProducts(sorted);
     });
   }
-
   loadProducts();
 });
