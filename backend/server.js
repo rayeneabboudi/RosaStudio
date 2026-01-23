@@ -1,104 +1,130 @@
-// backend/server.js
-const express = require('express');
-const cors = require('cors');
-const Database = require('better-sqlite3');
-const path = require('path');
+console.log("SHOP.JS LOADED");
 
-const app = express();
-const PORT = process.env.PORT || 3000;
+// FIX: We added '/api/products' to the end of the URL because that is what server.js defines
+const API_URL = "https://rosastudio-sfgv.onrender.com/api/products";
 
-// Middleware
-app.use(cors());
-app.use(express.json());
+let allProducts = [];
 
-// Connect to SQLite DB
-// ✅ Use the correct filename: 'product' (as seen in your screenshots)
-const dbPath = path.join(__dirname, 'product'); // ← no .db extension
-const db = new Database(dbPath);
-
-// Optional: Log connection
-console.log(`✅ Connected to SQLite database at ${dbPath}`);
-
-// Ensure table exists
-db.exec(`
-  CREATE TABLE IF NOT EXISTS products (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT,
-    price REAL,
-    image TEXT,
-    description TEXT
-  )
-`);
-
-// === API ROUTES (backend only) ===
-
-// GET all products
-app.get('/api/products', (req, res) => {
+async function loadProducts() {
   try {
-    const products = db.prepare('SELECT * FROM products').all();
-    res.json(products);
+    const res = await fetch(API_URL);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    
+    allProducts = await res.json();
+    renderProducts(allProducts);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Failed to fetch products' });
+    console.error("Load error:", err);
+    const container = document.getElementById("product-grid");
+    if(container) container.innerHTML = "<p>Loading...</p>";
   }
-});
+}
 
-// POST new product
-app.post('/api/products', (req, res) => {
-  const { name, price, image, description } = req.body;
-  try {
-    const stmt = db.prepare(
-      'INSERT INTO products (name, price, image, description) VALUES (?, ?, ?, ?)'
-    );
-    const info = stmt.run(name, price, image, description);
-    res.status(201).json({ id: info.lastInsertRowid });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Failed to create product' });
+function renderProducts(products) {
+  const container = document.getElementById("product-grid");
+  if (!container) return;
+
+  container.innerHTML = "";
+  const countEl = document.getElementById("product-count");
+  if (countEl) countEl.innerText = `${products.length} Products`;
+
+  products.forEach(product => {
+    const card = document.createElement("div");
+    card.className = "product-card";
+    const imgSrc = product.image || "pic/placeholder.jpg";
+
+    card.innerHTML = `
+      <div class="image-wrapper">
+        <img src="${imgSrc}" alt="${product.name}" onerror="this.src='pic/placeholder.jpg'">
+      </div>
+      <h3>${product.name}</h3>
+      <p class="price">$${Number(product.price).toFixed(2)}</p>
+      <button class="delete-btn" onclick="deleteProduct(${product.id})">Delete</button>
+    `;
+    container.appendChild(card);
+  });
+}
+
+async function addProduct() {
+  // Grab inputs using the IDs from your shop.html
+  const nameInput = document.getElementById("new-name");
+  const priceInput = document.getElementById("new-price");
+  const imageInput = document.getElementById("new-image");
+  const descInput = document.getElementById("new-desc");
+
+  if (!nameInput || !priceInput || !imageInput) {
+    alert("Error: Input fields not found.");
+    return;
   }
-});
 
-// PUT update product
-app.put('/api/products/:id', (req, res) => {
-  const { id } = req.params;
-  const { name, price, image, description } = req.body;
+  const payload = {
+    name: nameInput.value.trim(),
+    price: parseFloat(priceInput.value),
+    image: imageInput.value.trim(),
+    description: descInput ? descInput.value.trim() : ""
+  };
+
+  if (!payload.name || !payload.price) {
+      alert("Please enter a name and price.");
+      return;
+  }
+
   try {
-    const stmt = db.prepare(
-      'UPDATE products SET name = ?, price = ?, image = ?, description = ? WHERE id = ?'
-    );
-    const info = stmt.run(name, price, image, description, id);
-    if (info.changes === 0) {
-      return res.status(404).json({ error: 'Product not found' });
+    const res = await fetch(API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+
+    if (!res.ok) {
+        const errorText = await res.text();
+        throw new Error(errorText);
     }
-    res.json({ message: 'Product updated successfully' });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Failed to update product' });
-  }
-});
 
-// DELETE product
-app.delete('/api/products/:id', (req, res) => {
-  const { id } = req.params;
+    // Clear inputs
+    nameInput.value = "";
+    priceInput.value = "";
+    imageInput.value = "";
+    if(descInput) descInput.value = "";
+
+    // Refresh immediately
+    await loadProducts();
+    toggleAdmin(); 
+    
+  } catch (err) {
+    console.error("Add error:", err);
+    alert("Failed to add. Make sure Render is awake (wait 30s) and try again.");
+  }
+}
+
+async function deleteProduct(id) {
+  if (!confirm("Are you sure?")) return;
   try {
-    const stmt = db.prepare('DELETE FROM products WHERE id = ?');
-    const info = stmt.run(id);
-    if (info.changes === 0) {
-      return res.status(404).json({ error: 'Product not found' });
-    }
-    res.json({ message: 'Product deleted successfully' });
+    // FIX: Add slash between URL and ID
+    const res = await fetch(`${API_URL}/${id}`, { method: "DELETE" });
+    if (res.ok) loadProducts();
+    else alert("Could not delete item");
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Failed to delete product' });
+    console.error("Delete error:", err);
   }
-});
+}
 
-// Test route
-app.get('/', (req, res) => {
-  res.json({ message: 'Rosa Studio Backend API is running!' });
-});
+function toggleAdmin() {
+  const panel = document.getElementById("admin-panel");
+  if (panel) {
+    panel.style.display = (panel.style.display === "none" || panel.style.display === "") ? "block" : "none";
+  }
+}
 
-// Start server
-app.listen(PORT, () => {
-  console.log(`🚀 Backend running on port ${PORT}`);
+document.addEventListener("DOMContentLoaded", () => {
+    // Sort logic
+    const sortFilter = document.getElementById("sort-filter");
+    if (sortFilter) {
+      sortFilter.addEventListener("change", function () {
+        let sorted = [...allProducts];
+        if (this.value.includes("Low to High")) sorted.sort((a, b) => a.price - b.price);
+        else if (this.value.includes("High to Low")) sorted.sort((a, b) => b.price - a.price);
+        renderProducts(sorted);
+      });
+    }
+    loadProducts();
 });
