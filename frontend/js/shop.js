@@ -1,6 +1,6 @@
 console.log("SHOP.JS LOADED");
 
-const API_URL = "https://rosastudio-sfgv.onrender.com/";
+const API_URL = "https://rosastudio-sfgv.onrender.com";
 let allProducts = [];
 
 async function loadProducts() {
